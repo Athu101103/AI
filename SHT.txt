@@ -1,115 +1,256 @@
-// Flood-fill Polygon
-
-/* How to use:-
-    1. Left click to plot polygon
-    2. Right click once to show the polygon
-    3. Left click on a seed pixel to start filling
-*/
-
 #include <bits/stdc++.h>
 #include <iostream>
+#include <utility>
 #include <GL/glut.h>
-#include<windows.h>
 
 #define SCREEN_HT 480
-#define bgRed 1.0
-#define bgGreen 1.0
-#define bgBlue 1.0
 
 using namespace std;
 
+double xmin,ymin, xmax,ymax;
+
 vector<pair<double, double> > polygonCoords;
 int polygonCoordCount = 0;
-
-float fillCol[3] = {0.078,1.0,0.0}; //Fill color
+pair<double, double> rect1, rect2;
+int rectCoordCount = 0;
 
 void display()
 {
-    glClearColor(bgRed, bgGreen,bgBlue, 1.0);
+    glColor3f(0.0, 0.0, 1.0); //Blue color for window
+
     glFlush();
 }
 
-void floodfill(int x,int y,float oldcolor[3],float newcolor[3])
-{
-    float color[3];
-    glReadPixels(x,y,1.0,1.0,GL_RGB,GL_FLOAT,color);
-
-    if(color[0]==oldcolor[0] && color[1]==oldcolor[1] && color[2]==oldcolor[2])
-    {
-        glColor3f(newcolor[0], newcolor[1], newcolor[2]);
-        glBegin(GL_POINTS);
-            glVertex2f(x,y);
-        glEnd();
-        glFlush();
-        floodfill(x+1,y,oldcolor,newcolor);
-        floodfill(x-1,y,oldcolor,newcolor);
-        floodfill(x,y+1,oldcolor,newcolor);
-        floodfill(x,y-1,oldcolor,newcolor);
-        floodfill(x+1, y+1, oldcolor, newcolor);
-        floodfill(x-1,y-1,oldcolor,newcolor);
-        floodfill(x+1,y-1,oldcolor,newcolor);
-        floodfill(x-1,y+1,oldcolor,newcolor);
-     }
+void myInit() {
+    glClearColor(1.0,1.0,1.0,1.0); // Black bg
+    glColor3f(1.0,0.0,0.0); // Red
+    glPointSize(1.0);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluOrtho2D(0.0,640.0,0.0,480.0);
 }
+
+void plotRectangle(pair<double, double> coord1, pair<double, double> coord2){
+    xmin = coord1.first;
+    ymin = coord1.second;
+    xmax = coord2.first;
+    ymax = coord2.second;
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColor3f(1,0,0);
+
+    glEnable(GL_LINE_STIPPLE);
+    glLineStipple(1, 0xAAAA); 
+    glBegin(GL_LINE_LOOP);
+        glVertex2d(coord1.first, coord1.second);
+        glVertex2d(coord2.first, coord1.second);
+        glVertex2d(coord2.first, coord2.second);
+        glVertex2d(coord1.first, coord2.second);
+    glEnd();
+    glDisable(GL_LINE_STIPPLE);
+    glFlush();
+}
+
+/*void plotLine(pair<int, int> endPt1, pair<int, int> endPt2){
+    glColor3f(0,0,1);
+
+    glBegin(GL_LINES);
+        glVertex2d(endPt1.first, endPt1.second);
+        glVertex2d(endPt2.first, endPt2.second);
+    glEnd();
+    glFlush();
+}*/
+
+vector<pair<double, double > > leftClipper(){
+    vector<pair<double, double> > temp;
+    int i;
+    for(i = 0; i < polygonCoordCount; i++){
+        if (polygonCoords[i].first >= xmin){ // In - __ case
+            if (polygonCoords[(i+1)%polygonCoordCount].first >= xmin){ // in-in case
+                temp.push_back(polygonCoords[(i+1)%polygonCoordCount]);
+            }
+            else{ // in-out case
+                double slope = (polygonCoords[(i+1)%polygonCoordCount].second - polygonCoords[i].second)/(polygonCoords[(i+1)%polygonCoordCount].first - polygonCoords[i].first);
+                //y = y0 + slope*(x0-xmin)
+                temp.push_back(make_pair(xmin, polygonCoords[(i+1)%polygonCoordCount].second + slope*(xmin - polygonCoords[(i+1)%polygonCoordCount].first)));
+            }
+        }
+        else{
+            if (polygonCoords[(i+1)%polygonCoordCount].first >= xmin){ // out-in case
+                double slope = (polygonCoords[(i+1)%polygonCoordCount].second - polygonCoords[i].second)/(polygonCoords[(i+1)%polygonCoordCount].first - polygonCoords[i].first);
+                //Storing intersection
+                temp.push_back(make_pair(xmin, polygonCoords[i].second + slope*(xmin - polygonCoords[i].first)));
+                //Storing second point
+                temp.push_back(polygonCoords[(i+1)%polygonCoordCount]);
+            }
+            //else Out-out case [No points saved]
+        }
+    }
+    return temp;
+}
+
+vector<pair<double, double > > bottomClipper(vector<pair<double, double > > prevClipped){
+    vector<pair<double, double> > temp;
+    int i;
+    for(i = 0; i < prevClipped.size(); i++){
+        if (prevClipped[i].second >= ymin){ // In - __ case
+            if (prevClipped[(i+1)%prevClipped.size()].second >= ymin){ // in-in case
+                temp.push_back(prevClipped[(i+1)% prevClipped.size()]);
+            }
+            else{ // in-out case
+                double slope = (prevClipped[(i+1)%prevClipped.size()].second - prevClipped[i].second)/(prevClipped[(i+1)%prevClipped.size()].first - prevClipped[i].first);
+                //x = x0 + (1/slope)*(ymin - y0);
+                temp.push_back(make_pair(prevClipped[(i+1)%prevClipped.size()].first + (1/slope)*(ymin - prevClipped[(i+1)%prevClipped.size()].second),ymin));
+            }
+        }
+        else{
+            if (prevClipped[(i+1)%prevClipped.size()].second >= ymin){ // out-in case
+                double slope = (prevClipped[(i+1)%prevClipped.size()].second - prevClipped[i].second)/(prevClipped[(i+1)%prevClipped.size()].first - prevClipped[i].first);
+                //Storing intersection
+                temp.push_back(make_pair(prevClipped[i].first + (1/slope)*(ymin - prevClipped[i].second),ymin));
+                //Storing second point
+                temp.push_back(prevClipped[(i+1)%prevClipped.size()]);
+            }
+            //else Out-out case [No points saved]
+        }
+    }
+    return temp;
+}
+
+vector<pair<double, double > > rightClipper(vector<pair<double, double > > prevClipped){
+    vector<pair<double, double> > temp;
+    int i;
+    for(i = 0; i < prevClipped.size(); i++){
+        if (prevClipped[i].first <= xmax){ // In - __ case
+            if (prevClipped[(i+1)%prevClipped.size()].first <= xmax){ // in-in case
+                temp.push_back(prevClipped[(i+1)%prevClipped.size()]);
+            }
+            else{ // in-out case
+                double slope = (prevClipped[(i+1)%prevClipped.size()].second - prevClipped[i].second)/(prevClipped[(i+1)%prevClipped.size()].first - prevClipped[i].first);
+                //y = y0 + slope*(xmax - x0);
+                temp.push_back(make_pair(xmax, prevClipped[(i+1)%prevClipped.size()].second + slope*(xmax - prevClipped[(i+1)%prevClipped.size()].first)));
+            }
+        }
+        else{
+            if (prevClipped[(i+1)%prevClipped.size()].first <= xmax){ // out-in case
+                double slope = (prevClipped[(i+1)%prevClipped.size()].second - prevClipped[i].second)/(prevClipped[(i+1)%prevClipped.size()].first - prevClipped[i].first);
+                //Storing intersection
+                //y = y0 + slope*(xmax - x0);
+                temp.push_back(make_pair(xmax, prevClipped[i].second + slope*(xmax - prevClipped[i].first)));
+                //Storing second point
+                temp.push_back(prevClipped[(i+1)%prevClipped.size()]);
+            }
+            //else Out-out case [No points saved]
+        }
+    }
+    return temp;
+}
+
+vector<pair<double, double > > topClipper(vector<pair<double, double > > prevClipped){
+    vector<pair<double, double> > temp;
+    int i;
+    for(i = 0; i < prevClipped.size(); i++){
+        if (prevClipped[i].second <= ymax){ // In - __ case
+            if (prevClipped[(i+1)%prevClipped.size()].second <= ymax){ // in-in case
+                temp.push_back(prevClipped[(i+1)% prevClipped.size()]);
+            }
+            else{ // in-out case
+                double slope = (prevClipped[(i+1)%prevClipped.size()].second - prevClipped[i].second)/(prevClipped[(i+1)%prevClipped.size()].first - prevClipped[i].first);
+                //x = x0 + (1/slope)*(ymax - y0);
+                temp.push_back(make_pair(prevClipped[(i+1)%prevClipped.size()].first + (1/slope)*(ymax - prevClipped[(i+1)%prevClipped.size()].second),ymax));
+            }
+        }
+        else{
+            if (prevClipped[(i+1)%prevClipped.size()].second <= ymax){ // out-in case
+                double slope = (prevClipped[(i+1)%prevClipped.size()].second - prevClipped[i].second)/(prevClipped[(i+1)%prevClipped.size()].first - prevClipped[i].first);
+                //Storing intersection
+                temp.push_back(make_pair(prevClipped[i].first + (1/slope)*(ymax - prevClipped[i].second),ymax));
+                //Storing second point
+                temp.push_back(prevClipped[(i+1)%prevClipped.size()]);
+            }
+            //else Out-out case [No points saved]
+        }
+    }
+    return temp;
+}
+
+void plotClippedPolygon(vector<pair<double, double > > res){
+    int i;
+    glColor3f(0.0, 1.0, 0.0);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glBegin(GL_POLYGON);
+        for(i=0; i<res.size(); i++)
+            glVertex2f(res[i].first, res[i].second);
+    glEnd();
+    glFlush();
+}
+
+void sutherlandHodgeman(){
+    vector<pair<double,double > > tempRes = leftClipper(); //Stores left clipped points into tempRes
+    tempRes = bottomClipper(tempRes); //Stores bottom clipped points into tempRes
+    tempRes = rightClipper(tempRes); //Stores right clipped points into tempRes
+    tempRes = topClipper(tempRes); //Stores top clipped points into tempRes
+    plotClippedPolygon(tempRes); //Plots the clipped polygon
+}
+
+bool polygonPlotted = false;
 
 void plotPolygon(){
     int i;
-    glColor3f(1.0, 0.0, 0.0);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINES);
-    glBegin(GL_POLYGON);
+    glBegin(GL_LINE_LOOP);
         for(i=0; i<polygonCoordCount; i++)
             glVertex2f(polygonCoords[i].first, polygonCoords[i].second);
     glEnd();
     glFlush();
 }
 
-bool polygonPlotted = false;
+void mouseFunction(int button, int state, int x, int y){
+    if (button==GLUT_LEFT and state==GLUT_DOWN){
+        y = SCREEN_HT - y;
+        cout<<"Coordinate: ("<<x<<","<<y<<")"<<endl;
+        if (rectCoordCount==0){
+            rect1.first = x;
+            rect1.second = y;
+            rectCoordCount += 1;
+        }
+        else if (rectCoordCount == 1){
+            rect2.first = x;
+            rect2.second = y;
+            rectCoordCount += 1;
 
-void mouseHandler(int button, int state, int x, int y) {
-    y = SCREEN_HT - y;
-
-    if(button==GLUT_LEFT && state == GLUT_DOWN){
-        if(!polygonPlotted){
-            glColor3f(1.0,0.0,0.0);
+            plotRectangle(rect1, rect2);
+        }
+        else{
+            glColor3f(0.0,0.0,1.0);
             glBegin(GL_POINTS);
                 glVertex2f(x,y);
             glEnd();
             glFlush();
-
             polygonCoords.push_back(make_pair(x, y));
             polygonCoordCount += 1;
         }
-        else{ //Filling
-            float interior_color[3];
-            glReadPixels(x,y,1.0,1.0,GL_RGB,GL_FLOAT,interior_color);
-            floodfill(x, y, interior_color, fillCol);
+    }
+    else if (button==GLUT_RIGHT_BUTTON and state==GLUT_DOWN){
+        if (! polygonPlotted){
+            plotPolygon();
+            polygonPlotted = true;
+        }
+        else{
+            sutherlandHodgeman();
         }
     }
-
-    else if(button==GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
-        plotPolygon();
-        polygonPlotted = true;
-    }
-}
-
-void myInit() {
-    glClearColor(1,1,1,1);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluOrtho2D(0.0, 640.0, 0.0, 480.0);
 }
 
 int main(int argc, char** argv)
 {
     glutInit(&argc,argv);
-    glutInitDisplayMode (GLUT_SINGLE | GLUT_RGB);
+    glutInitDisplayMode(GLUT_SINGLE|GLUT_RGB);
     glutInitWindowSize(640,480);
     glutInitWindowPosition(0,0);
-    glutCreateWindow("Flood-Fill-Recursive");
-    glutDisplayFunc(display);
+    glutCreateWindow("Sutherland Hodgeman Polygon Clipping");
     myInit();
-    glutMouseFunc(mouseHandler);
+    glutDisplayFunc(display);
+    glutMouseFunc(mouseFunction);
+
     glutMainLoop();
     return 0;
 }
